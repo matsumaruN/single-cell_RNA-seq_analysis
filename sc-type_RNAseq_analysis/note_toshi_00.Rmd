@@ -1,0 +1,134 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+https://note.com/tokitky/n/n7a72fae06ade?magazine_key=mf2b7c75acd21
+
+```{r}
+library(edgeR)
+library(made4)
+library(fgsea)
+library(genefilter)
+library(caret)
+library(pheatmap)
+library(RColorBrewer)
+library(ggplot2)
+library(gplots)
+library(calibrate)
+#library(maptools)
+library(FactoMineR)
+library(rgl)
+library(BBmisc)
+library(survival)
+library(survminer)
+library(dplyr)
+library(data.table)
+library(reshape2)
+library(beeswarm)
+library(Seurat)
+library(cowplot)
+#library(SeuratData)
+```
+
+```{r}
+D000.data <- read.table(file.path("dat_AML371","GSM3587946_AML371-D0.dem.txt"), header=T, row.names=1, check.names = T, sep="\t")
+D034.data <- read.table(file.path("dat_AML371","GSM3587948_AML371-D34.dem.txt"), header=T, row.names=1, check.names = T, sep="\t")
+```
+
+```{r}
+D000.anno <- read.table(file.path("dat_AML371", "GSM3587947_AML371-D0.anno.txt"), header=T, row.names=1, sep="\t");
+D034.anno <- read.table(file.path("dat_AML371", "GSM3587949_AML371-D34.anno.txt"), header=T, row.names=1, sep="\t");
+```
+
+
+```{r}
+D000 <- CreateSeuratObject(D000.data, project="AML371", min.cell=0)
+D034 <- CreateSeuratObject(D034.data, project="AML371", min.cell=3)
+```
+
+```{r}
+D000@meta.data$stim <- "D000"
+D034@meta.data$stim <- "D034"
+```
+
+```{r}
+D000@meta.data$mal <- D000.anno$PredictionRF2
+D034@meta.data$mal <- D034.anno$PredictionRF2
+
+D000@meta.data$mal
+D034@meta.data$mal
+```
+
+```{r}
+#feature selection
+D000 <- FindVariableFeatures(D000, selection.method = "vst", nfeatures = 3000)
+D034  <- FindVariableFeatures(D034, selection.method = "vst", nfeatures = 3000)
+#normalize
+D000 <- NormalizeData(D000, scale.factor = 10000)
+D034 <- NormalizeData(D034, scale.factor = 10000)
+
+#integration of Data
+
+AML371_all.list <- NULL
+AML371_all.list <- list(D000, D034)
+
+names(AML371_all.list) <- c("D000","D034")
+AML371_all.list 
+
+AML371_all.anchors <- FindIntegrationAnchors(object.list = AML371_all.list, dims = 1:30)
+AML371_all.integrated <- IntegrateData(anchorset = AML371_all.anchors, dims = 1:30)
+DefaultAssay(AML371_all.integrated) <- "integrated"
+```
+```{r}
+# Run the standard workflow for visualization and clustering
+AML371_all.integrated <- ScaleData(AML371_all.integrated, verbose = FALSE)
+AML371_all.integrated <- RunPCA(AML371_all.integrated , npcs = 30, verbose = FALSE)
+AML371_all.integrated <- RunUMAP(AML371_all.integrated , reduction = "pca", dims = 1:5)
+AML371_all.integrated  <- FindNeighbors(AML371_all.integrated , reduction = "pca", dims = 1:5)
+AML371_all.integrated  <- FindClusters(AML371_all.integrated , resolution = 0.5)
+p1 <- DimPlot(AML371_all.integrated , reduction = "umap", group.by = "stim")
+p2 <- DimPlot(AML371_all.integrated , reduction = "umap", group.by = "mal")
+p3 <- DimPlot(AML371_all.integrated , reduction = "umap",label = TRUE,
+             repel = TRUE) + NoLegend()
+```
+```{r, fig.width=8, fig.height=7}
+plot_grid(p1, p2, p3)
+
+```
+```{r}
+v1 <- DimPlot(AML371_all.integrated , reduction = "umap", label = TRUE, split.by="stim")
+v2 <- DimPlot(AML371_all.integrated , reduction = "umap", label = TRUE, split.by="mal")
+v3 <- DimPlot(AML371_all.integrated , reduction = "umap", group.by="stim", split.by="mal")
+v4 <- DimPlot(AML371_all.integrated , reduction = "umap", group.by="mal", split.by="stim")
+```
+```{r, fig.width=8, fig.height=6}
+plot_grid(v1, v2, v4, v3)
+
+```
+
+```{r}
+AML371_all.integrated$mal.stim <- paste(AML371_all.integrated$mal, AML371_all.integrated$stim, sep = "_")
+AML371_all.integrated$mal.stim 
+```
+```{r}
+
+```
+
+
+```{r}
+#Before and after in leukemia
+mal.chemo.response <- FindMarkers(AML371_all.integrated, ident.1 = "malignant_D034", ident.2 = "malignant_D000", verbose = FALSE)
+#Before and after in Normal
+normal.chemo.response <- FindMarkers(AML371_all.integrated, ident.1 = "normal_D034", ident.2 = "normal_D000", verbose = FALSE)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.

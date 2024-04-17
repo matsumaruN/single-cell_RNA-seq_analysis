@@ -101,17 +101,17 @@ D000[["percent.mt"]]
 ```
 
 ```{r}
-a <- D000.data %>% filter(str_detect(row.names(.), "^MT-")) %>% select(ends_with("AAAGCAGTTATT")) %>% sum
-b <- D000.data %>% select(ends_with("AAAGCAGTTATT")) %>% sum
- a / (b)
- b
+D000.data %>% filter(str_detect(row.names(.), "^MT-")) %>% dplyr::select(ends_with("AAAGCAGTTATT")) %>% sum
+b<- D000.data %>% dplyr::select(ends_with("AAAGCAGTTATT")) %>% sum
+# a / (b)
+# b
 
-a <- D000.data %>% filter(str_detect(row.names(.), "^MT-")) %>% select(ends_with("AAGAAAGTGCCA")) %>% sum
-b <- D000.data %>% select(ends_with("AAGAAAGTGCCA")) %>% sum
+a <- D000.data %>% filter(str_detect(row.names(.), "^MT-")) %>% dplyr::select(ends_with("AAGAAAGTGCCA")) %>% sum
+b <- D000.data %>% dplyr::select(ends_with("AAGAAAGTGCCA")) %>% sum
 a / (b-a)
-D000.data %>% filter(str_detect(row.names(.), "^MT-")) %>% select(ends_with("AAGGCCGAGTCA")) %>% sum / D000.data %>% select(ends_with("AAGGCCGAGTCA")) %>% sum
-D000.data %>% filter(str_detect(row.names(.), "^MT-")) %>% select(ends_with("AAGTAAAGGGTN")) %>% sum / D000.data %>% select(ends_with("AAGTAAAGGGTN")) %>% sum
-D000.data %>% filter(str_detect(row.names(.), "^MT-")) %>% select(ends_with("AGACTTTGAGTN")) %>% sum / D000.data %>% select(ends_with("AGACTTTGAGTN")) %>% sum
+D000.data %>% filter(str_detect(row.names(.), "^MT-")) %>% dplyr::select(ends_with("AAGGCCGAGTCA")) %>% sum / D000.data %>% dplyr::select(ends_with("AAGGCCGAGTCA")) %>% sum
+D000.data %>% filter(str_detect(row.names(.), "^MT-")) %>% dplyr::select(ends_with("AAGTAAAGGGTN")) %>% sum / D000.data %>% dplyr::select(ends_with("AAGTAAAGGGTN")) %>% sum
+D000.data %>% filter(str_detect(row.names(.), "^MT-")) %>% dplyr::select(ends_with("AGACTTTGAGTN")) %>% sum / D000.data %>% dplyr::select(ends_with("AGACTTTGAGTN")) %>% sum
 ```
 ```{r}
 D000[["nFeature_RNA"]]
@@ -126,8 +126,8 @@ plot_grid(v1, v2)
 
 ```{r}
 D000@meta.data
-D000.data %>% select(ends_with("AAAGCAGTTATT")) %>% sum
-D000.data %>% select(ends_with("AAAGCAGTTATT")) %>% filter(AML371.D0_AAAGCAGTTATT!=0) %>% count
+D000.data %>% dplyr::select(ends_with("AAAGCAGTTATT")) %>% sum
+D000.data %>% dplyr::select(ends_with("AAAGCAGTTATT")) %>% filter(AML371.D0_AAAGCAGTTATT!=0) %>% unlist %>% count
 ```
 
 ```{r, eval=FALSE}
@@ -239,6 +239,7 @@ D000@reductions
 D000@meta.data
 ```
 
+https://compgenomr.github.io/book/
 
 # PCA による次元削減
 
@@ -254,6 +255,27 @@ print(D000[["pca"]], dims=1:3, nfeatures=5)
 VizDimLoadings(D000, dims=1:2, reduction="pca")
 ```
 
+PC1とPC2で散布図
+
+```{r}
+options(repr.plot.width = 7, repr.plot.height=6)
+DimPlot(D000, reduction="pca")
+```
+確かに、pC1は‐10～30で分散しており、PC2はそこまで分散していない。
+
+PC1方向で正負トップランクの遺伝子について、ランダムに選ばれたそれぞれ500細胞での値を可視化
+
+```{r}
+DimHeatmap(D000, dims=1, cells=756, balanced=TRUE)
+```
+```{r, fig.height=30}
+DimHeatmap(D000, dims=1:15, cells=756, balanced=TRUE)
+```
+```{r, fig.height=30}
+D034 <- RunPCA(D034, features = head(VariableFeatures(object=D034), 100000))
+DimHeatmap(D034, dims=1:15, cells=756, balanced=TRUE)
+```
+
 
 ```{r}
 #integration of Data
@@ -264,9 +286,18 @@ AML371_all.list <- list(D000, D034)
 names(AML371_all.list) <- c("D000","D034")
 AML371_all.list 
 
+
+#feature selection
+D000 <- FindVariableFeatures(D000, selection.method = "vst", nfeatures = 3000)
+D034  <- FindVariableFeatures(D034, selection.method = "vst", nfeatures = 3000)
+
 AML371_all.anchors <- FindIntegrationAnchors(object.list = AML371_all.list, dims = 1:30)
 AML371_all.integrated <- IntegrateData(anchorset = AML371_all.anchors, dims = 1:30)
 DefaultAssay(AML371_all.integrated) <- "integrated"
+```
+```{r}
+AML371_all.integrated %>% names
+AML371_all.integrated$mal
 ```
 
 ```{r}
@@ -289,6 +320,7 @@ v3 <- DimPlot(AML371_all.integrated , reduction = "umap", group.by="stim", split
 v4 <- DimPlot(AML371_all.integrated , reduction = "umap", group.by="mal", split.by="stim")
 plot_grid(v1, v2, v4, v3)
 ```
+
 ```{r}
 AML371_all.integrated$mal.stim <- paste(AML371_all.integrated$mal, AML371_all.integrated$stim, sep = "_")
 AML371_all.integrated$mal.stim 

@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+```{r reading libraries}
 library(tidyverse)
 library(Seurat)
 library(openxlsx)
@@ -19,12 +19,247 @@ library(HGNChelper)
 #library(SeuratData)
 set.seed(1234)
 ```
+Data acquisition
 
+source:
+
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE224398
+
+available on h5 format.
+
+```{r reading h5 files}
+h5_filtered_WT <- Read10X_h5("GSM7021714_C_6m_filtered_feature_bc_matrix.h5")
+h5_filtered_AD <- Read10X_h5("GSM7021717_A_6m_filtered_feature_bc_matrix.h5")
+```
+
+
+```{r eval=FALSE}
+h5_filtered_WT %>% class
+h5_filtered_WT %>% dim
+h5_filtered_WT %>% as.data.frame()
+```
+
+dgcMatrix is a class of sparse numeric matrices in the compressed, sparse, column-oriented format.
+
+
+```{r}
+
+seurat_object_WT <- CreateSeuratObject(counts = h5_filtered_WT, project = "ScRNA-seq of AD mouse", min.cells = 3, min.features = 200)
+
+seurat_object_AD <- CreateSeuratObject(counts = h5_filtered_AD, project = "ScRNA-seq of AD mouse", min.cells = 3, min.features = 200)
+
+```
+```{r}
+seurat_object_WT$type <- "WT"
+seurat_AD$type<- "AD"
+
+```
+
+```{r}
+seurat_WT@meta.data
+seurat_WT %>% names
+seurat_WT[["RNA"]]
+```
+
+```{r}
+raw_WT %>% as.data.frame() %>% filter(str_detect(row.names(.), "^MT-"))
+raw_AD %>% as.data.frame() %>% filter(str_detect(row.names(.), "^MT-"))
+```
+
+No MT related genes
+
+```{r}
+###QUALITY CHECK###-------------------------------------------------------------
+seurat_WT[["percent.mt"]] <- PercentageFeatureSet(seurat_WT, pattern = "^MT-")
+seurat_AD[["percent.mt"]] <- PercentageFeatureSet(seurat_AD, pattern = "^MT-")
+
+VlnPlot(seurat_WT, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+#FeatureScatter(seurat_WT, feature1 = "nCount_RNA", feature2 = "percent.mt")
+FeatureScatter(seurat_WT, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+```{r}
+VlnPlot(seurat_AD, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+#FeatureScatter(seurat_AD, feature1 = "nCount_RNA", feature2 = "percent.mt")
+FeatureScatter(seurat_AD, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+
+```{r}
+seurat_WT <- subset(seurat_WT, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 30)
+seurat_AD <- subset(seurat_AD, subset = nFeature_RNA > 200 & nFeature_RNA < 3000 & percent.mt < 25)
+```
+
+
+```{r}
+###NORMALIZATION###-------------------------------------------------------------
+seurat_WT <- NormalizeData(seurat_WT, normalization.method = "LogNormalize", scale.factor = 10000)
+seurat_AD <- NormalizeData(seurat_AD, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+
+```{r}
+seurat_WT <- FindVariableFeatures(seurat_WT, selection.method = "vst", nfeatures = 3000)
+seurat_AD <- FindVariableFeatures(seurat_AD, selection.method = "vst", nfeatures = 3000)
+```
+
+
+```{r, fig.width=13, fig.height=5}
+top10 <- head(VariableFeatures(seurat_WT), 10)
+plot1 <- VariableFeaturePlot(seurat_WT)
+plot21 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+#plot21
+
+top10 <- head(VariableFeatures(seurat_AD), 10)
+plot1 <- VariableFeaturePlot(seurat_AD)
+plot22 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot21 + plot22
+```
+
+# Data scaling
+
+```{r}
+seurat_WT <- ScaleData(seurat_WT)
+seurat_WT <- RunPCA(seurat_WT, features = head(VariableFeatures(object=seurat_WT), 10000))
+DimHeatmap(seurat_WT, dims = 1:3, cells = 500, balanced = T)
+
+seurat_AD <- ScaleData(seurat_AD)
+seurat_AD <- RunPCA(seurat_AD, features = head(VariableFeatures(object=seurat_AD), 10000))
+DimHeatmap(seurat_AD, dims = 1:3, cells = 500, balanced = T)
+
+```
+
+
+```{r}
+source(file.path(getwd(),"..", "..", "sc-type", "R", "gene_sets_prepare.R"))
+source(file.path(getwd(),"..", "..", "sc-type", "R", "sctype_score_.R"))
+```
+
+
+```{r}
+db_ = "SCTypeDB_full.xlsx"
+tissue = "Brain"
+```
+
+```{r}
+gs_list = gene_sets_prepare(db_, tissue)
+```
+
+```{r}
+scRNAseqData = readRDS(file.path(getwd(), "..","..", "sc-type", "exampleData.RDS")); 
+es.max = sctype_score(scRNAseqData = scRNAseqData, scaled = TRUE, gs = gs_list$gs_positive, gs2 = gs_list$gs_negative)
+```
+
+
+```{r}
+#integration of Data
+mouse_all.list <- NULL
+mouse_all.list <- list(seurat_WT,seurat_AD)
+
+names(mouse_all.list) <- c("WT", "AD")
+
+
+###統合###----------------------------------------------------------------------
+mouse_all.anchors <- FindIntegrationAnchors(object.list = mouse_all.list, dims = 1:20)
+mouse_all.integrated <- IntegrateData(anchorset = mouse_all.anchors, dims = 1:20)
+DefaultAssay(mouse_all.integrated) <- "integrated"
+```
+
+```{r}
+###PCA###-----------------------------------------------------------------------
+mouse_all.integrated <- ScaleData(mouse_all.integrated, verbose=FALSE)
+mouse_all.integrated <- RunPCA(mouse_all.integrated, npcs=30, verbose = FALSE)
+```
+
+仮にPC1-20で解析を進めています
+
+```{r}
+mouse_all.integrated <- RunUMAP(mouse_all.integrated, reduction = "pca", dims = 1:20)
+
+###CLUTERING###-----------------------------------------------------------------
+mouse_all.integrated <- FindNeighbors(mouse_all.integrated, reduction = "pca", dims = 1:20)
+mouse_all.integrated <- FindClusters(mouse_all.integrated, resolution = 0.5)
+```
+
+
+```{r}
+#saveRDS(merge.data,"~/Desktop/Save/WT:AD_Save/mergeData_donePCA.rds")
+DimPlot(mouse_all.integrated, reduction = "umap", split.by = "type", label = TRUE)
+```
+```{r, fig.height=5, fig.width=6}
+DimPlot(mouse_all.integrated, reduction = "umap", group.by="type", label=TRUE)
+```
+
+#Differentially expressed gene (DEG)の検出
+```{r}
+mouse_AD.markers <- FindAllMarkers(mouse_all.integrated, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+```
+
+```{r}
+mouse_AD.markers %>% group_by(cluster) %>% top_n(n=2, wt = avg_log2FC)
+```
+```{r}
+top10 <- mouse_AD.markers %>% group_by(cluster) %>% top_n(n=10, wt=avg_log2FC)
+```
+
+```{r}
+cluster1.markers <- FindMarkers(mouse_all.integrated, ident.1=1, min.pct = 0.25)
+cluster5.markers <- FindMarkers(mouse_all.integrated, ident.1=5, ident=c(0,3), min.pct=0.25)
+```
+```{r}
+mouse_all.integrated$type %>% tail
+```
+
+
+```{r, fig.height=20, fig.width=20}
+DoHeatmap(mouse_all.integrated, features=top10$gene)
+```
+
+
+```{r}
+mouse_all.integrated %>% names
+
+mouse_all.integrated@meta.data
+mouse_all.integrated@
+```
+
+
+```{r}
+mouse.AD.marker <- FindMarkers(mouse_all.integrated, ident.1 = "WT", ident.2 = "AD")
+```
+
+
+```{r}
+
+###ANNOTATION###----------------------------------------------------------------
+
+#陽性遺伝子と陰性遺伝子のスコアリング
+es.max = sctype_score(scRNAseqData = mouse_all[["integrated"]]@scale.data, scaled = TRUE, gs = gs_list$gs_positive, gs2 = gs_list$gs_negative)
+#meta.dataのseurat_clustersんも情報とes.maxの情報を統合
+cL_resutls = do.call("rbind", lapply(unique(merge.data@meta.data$seurat_clusters), function(cl){
+  es.max.cl = 
+sort(rowSums(es.max[ ,rownames(merge.data@meta.data[merge.data@meta.data$seurat_clusters==cl, ])]), decreasing = !0)
+  head(data.frame(cluster = cl, type = names(es.max.cl), scores = es.max.cl, ncells = sum(merge.data@meta.data$seurat_clusters==cl)), 10)
+}))
+  sctype_scores = cL_resutls %>% group_by(cluster) %>% top_n(n = 1, wt = scores) 
+#信頼性の低いsctype_scoreの場合そのクラスターをunknownに
+  sctype_scores$type[as.numeric(as.character(sctype_scores$scores)) < 
+sctype_scores$ncells/4] = "unknown"
+  print(sctype_scores[,1:3])
+#細胞腫を特定する新たなmeta.dataである"customclassif"を追加する
+merge.data@meta.data$customclassif = ""
+for (j in unique(sctype_scores$cluster)) {
+  cl_type <- sctype_scores[sctype_scores$cluster == j,]
+  merge.data@meta.data$customclassif[merge.data@meta.data$seurat_clusters == j] <- as.character(cl_type$type[1])
+}
+
+DimPlot(merge.data, reduction = "umap", split.by = "type", label = TRUE, repel = TRUE, group.by = 'customclassif') 
+
+```
 
 ## R Markdown
 
 
-```{r}
+```{r eval=FALSE}
 ###DATASET###-------------------------------------------------------------------
 setwd("~/Desktop/R_Seurat/AD.scRNA_Seq/")
 
