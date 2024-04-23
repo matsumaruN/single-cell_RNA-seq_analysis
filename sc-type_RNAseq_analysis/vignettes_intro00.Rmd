@@ -153,6 +153,7 @@ pbmc.markers %>%
     group_by(cluster) %>%
     dplyr::filter(avg_log2FC > 1)
 ```
+
 ```{r}
 cluster0.markers <- FindMarkers(pbmc, ident.1 = 0, logfc.threshold = 0.25, test.use = "roc", only.pos = TRUE)
 ```
@@ -187,6 +188,7 @@ names(new.cluster.ids) <- levels(pbmc)
 pbmc <- RenameIdents(pbmc, new.cluster.ids)
 DimPlot(pbmc, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
 ```
+
 ```{r}
 library(ggplot2)
 DimPlot(pbmc, reduction = "umap", label = TRUE, label.size = 4.5) + xlab("UMAP 1") + ylab("UMAP 2") +
