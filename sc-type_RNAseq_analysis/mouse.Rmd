@@ -28,89 +28,105 @@ https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE224398
 available on h5 format.
 
 ```{r reading h5 files}
-h5_filtered_WT <- Read10X_h5("GSM7021714_C_6m_filtered_feature_bc_matrix.h5")
-h5_filtered_AD <- Read10X_h5("GSM7021717_A_6m_filtered_feature_bc_matrix.h5")
+raw_WT.data <- Read10X_h5("GSM7021714_C_6m_filtered_feature_bc_matrix.h5")
+raw_AD.data <- Read10X_h5("GSM7021717_A_6m_filtered_feature_bc_matrix.h5")
 ```
 
+To see what is in the h5 file.
 
-```{r eval=FALSE}
-h5_filtered_WT %>% class
-h5_filtered_WT %>% dim
-h5_filtered_WT %>% as.data.frame()
+```{r}
+raw_WT.data %>% class
+raw_WT.data %>% dim
+raw_WT.data %>% as.data.frame()
 ```
 
 dgcMatrix is a class of sparse numeric matrices in the compressed, sparse, column-oriented format.
 
 
+## Create Seurat Object
+
 ```{r}
 
-seurat_object_WT <- CreateSeuratObject(counts = h5_filtered_WT, project = "ScRNA-seq of AD mouse", min.cells = 3, min.features = 200)
-
-seurat_object_AD <- CreateSeuratObject(counts = h5_filtered_AD, project = "ScRNA-seq of AD mouse", min.cells = 3, min.features = 200)
-
-```
-```{r}
-seurat_object_WT$type <- "WT"
-seurat_object_AD$type<- "AD"
-
+raw_WT <- CreateSeuratObject(counts = raw_WT.data, project = "ScRNA-seq of AD mouse", min.cells = 3, min.features = 200)
+raw_WT$type <- "WT"
+raw_AD <- CreateSeuratObject(counts = raw_AD.data, project = "ScRNA-seq of AD mouse", min.cells = 3, min.features = 200)
+raw_AD$type<- "AD"
 ```
 
-```{r}
-seurat_object_WT@meta.data
-seurat_object_WT %>% names
-seurat_object_WT[["RNA"]]
-```
+To see what is Seurat object
 
 ```{r}
-h5_filtered_WT %>% as.data.frame() %>% filter(str_detect(row.names(.), "^MT-"))
-h5_filtered_AD %>% as.data.frame() %>% filter(str_detect(row.names(.), "^MT-"))
+raw_WT@meta.data
+raw_WT %>% names
+raw_WT[["RNA"]]
+```
+###QUALITY CHECK###-------------------------------------------------------------
+
+```{r}
+raw_WT.data %>% as.data.frame() %>% filter(str_detect(row.names(.), "^MT-"))
+raw_AD.data %>% as.data.frame() %>% filter(str_detect(row.names(.), "^MT-"))
 ```
 
 No MT related genes
 
 ```{r}
-###QUALITY CHECK###-------------------------------------------------------------
-seurat_object_WT[["percent.mt"]] <- PercentageFeatureSet(seurat_WT, pattern = "^MT-")
-seurat_object_AD[["percent.mt"]] <- PercentageFeatureSet(seurat_AD, pattern = "^MT-")
+raw_WT[["percent.mt"]] <- PercentageFeatureSet(raw_WT, pattern = "^MT-")
+raw_AD[["percent.mt"]] <- PercentageFeatureSet(raw_AD, pattern = "^MT-")
+```
 
-VlnPlot(seurat_WT, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
-#FeatureScatter(seurat_WT, feature1 = "nCount_RNA", feature2 = "percent.mt")
-FeatureScatter(seurat_WT, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```{r}
+raw_WT <- NormalizeData(raw_WT)
+raw_AD <- NormalizeData(raw_AD)
 ```
 ```{r}
-VlnPlot(seurat_AD, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+VlnPlot(raw_WT, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+No mitochondrial gene.
+
+```{r}
+FeatureScatter(raw_WT, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+
+
+```{r}
+VlnPlot(raw_AD, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+
+```{r}
 #FeatureScatter(seurat_AD, feature1 = "nCount_RNA", feature2 = "percent.mt")
-FeatureScatter(seurat_AD, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+FeatureScatter(raw_AD, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
 ```
 
 
 ```{r}
-seurat_WT <- subset(seurat_WT, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 30)
-seurat_AD <- subset(seurat_AD, subset = nFeature_RNA > 200 & nFeature_RNA < 3000 & percent.mt < 25)
+raw_WT <- subset(raw_WT, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 30)
+raw_AD <- subset(raw_AD, subset = nFeature_RNA > 200 & nFeature_RNA < 3000 & percent.mt < 25)
 ```
 
 
 ```{r}
 ###NORMALIZATION###-------------------------------------------------------------
-seurat_WT <- NormalizeData(seurat_WT, normalization.method = "LogNormalize", scale.factor = 10000)
-seurat_AD <- NormalizeData(seurat_AD, normalization.method = "LogNormalize", scale.factor = 10000)
+raw_WT <- NormalizeData(raw_WT, normalization.method = "LogNormalize", scale.factor = 10000)
+raw_AD <- NormalizeData(raw_AD, normalization.method = "LogNormalize", scale.factor = 10000)
 ```
 
 
 ```{r}
-seurat_WT <- FindVariableFeatures(seurat_WT, selection.method = "vst", nfeatures = 3000)
-seurat_AD <- FindVariableFeatures(seurat_AD, selection.method = "vst", nfeatures = 3000)
+raw_WT <- FindVariableFeatures(raw_WT, selection.method = "vst", nfeatures = 3000)
+raw_AD <- FindVariableFeatures(raw_AD, selection.method = "vst", nfeatures = 3000)
 ```
 
 
 ```{r, fig.width=13, fig.height=5}
-top10 <- head(VariableFeatures(seurat_WT), 10)
-plot1 <- VariableFeaturePlot(seurat_WT)
+top10 <- head(VariableFeatures(raw_WT), 10)
+plot1 <- VariableFeaturePlot(raw_WT)
 plot21 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
 #plot21
-
-top10 <- head(VariableFeatures(seurat_AD), 10)
-plot1 <- VariableFeaturePlot(seurat_AD)
+top10 <- head(VariableFeatures(raw_AD), 10)
+plot1 <- VariableFeaturePlot(raw_AD)
 plot22 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
 plot21 + plot22
 ```
@@ -118,14 +134,15 @@ plot21 + plot22
 # Data scaling
 
 ```{r}
-seurat_WT <- ScaleData(seurat_WT)
-seurat_WT <- RunPCA(seurat_WT, features = head(VariableFeatures(object=seurat_WT), 10000))
-DimHeatmap(seurat_WT, dims = 1:3, cells = 500, balanced = T)
+raw_WT <- ScaleData(raw_WT)
+raw_WT <- RunPCA(raw_WT, features = head(VariableFeatures(object=raw_WT), 10000))
+DimHeatmap(raw_WT, dims = 1:3, cells = 500, balanced = T)
+```
 
-seurat_AD <- ScaleData(seurat_AD)
-seurat_AD <- RunPCA(seurat_AD, features = head(VariableFeatures(object=seurat_AD), 10000))
-DimHeatmap(seurat_AD, dims = 1:3, cells = 500, balanced = T)
-
+```{r}
+raw_AD <- ScaleData(raw_AD)
+raw_AD <- RunPCA(raw_AD, features = head(VariableFeatures(object=raw_AD), 10000))
+DimHeatmap(raw_AD, dims = 1:3, cells = 500, balanced = T)
 ```
 
 
@@ -158,7 +175,7 @@ mouse_all.list <- list(seurat_WT,seurat_AD)
 names(mouse_all.list) <- c("WT", "AD")
 
 
-###統�?###----------------------------------------------------------------------
+###統???###----------------------------------------------------------------------
 mouse_all.anchors <- FindIntegrationAnchors(object.list = mouse_all.list, dims = 1:20)
 mouse_all.integrated <- IntegrateData(anchorset = mouse_all.anchors, dims = 1:20)
 DefaultAssay(mouse_all.integrated) <- "integrated"
@@ -170,7 +187,7 @@ mouse_all.integrated <- ScaleData(mouse_all.integrated, verbose=FALSE)
 mouse_all.integrated <- RunPCA(mouse_all.integrated, npcs=30, verbose = FALSE)
 ```
 
-仮にPC1-20で解析を進めて�?ま�?
+仮にPC1-20で解析を進めて???ま???
 
 ```{r}
 mouse_all.integrated <- RunUMAP(mouse_all.integrated, reduction = "pca", dims = 1:20)
@@ -189,7 +206,7 @@ DimPlot(mouse_all.integrated, reduction = "umap", split.by = "type", label = TRU
 DimPlot(mouse_all.integrated, reduction = "umap", group.by="type", label=TRUE)
 ```
 
-#Differentially expressed gene (DEG)の検�?�
+#Differentially expressed gene (DEG)の検???
 ```{r}
 mouse_AD.markers <- FindAllMarkers(mouse_all.integrated, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 ```
@@ -232,9 +249,9 @@ mouse.AD.marker <- FindMarkers(mouse_all.integrated, ident.1 = "WT", ident.2 = "
 
 ###ANNOTATION###----------------------------------------------------------------
 
-#陽性遺伝子と陰性遺伝子�?�スコアリング
+#陽性遺伝子と陰性遺伝子???スコアリング
 es.max = sctype_score(scRNAseqData = mouse_all[["integrated"]]@scale.data, scaled = TRUE, gs = gs_list$gs_positive, gs2 = gs_list$gs_negative)
-#meta.dataのseurat_clustersんも�?報とes.maxの�?報を統�?
+#meta.dataのseurat_clustersんも???報とes.maxの???報を統???
 cL_resutls = do.call("rbind", lapply(unique(merge.data@meta.data$seurat_clusters), function(cl){
   es.max.cl = 
 sort(rowSums(es.max[ ,rownames(merge.data@meta.data[merge.data@meta.data$seurat_clusters==cl, ])]), decreasing = !0)
@@ -245,7 +262,7 @@ sort(rowSums(es.max[ ,rownames(merge.data@meta.data[merge.data@meta.data$seurat_
   sctype_scores$type[as.numeric(as.character(sctype_scores$scores)) < 
 sctype_scores$ncells/4] = "unknown"
   print(sctype_scores[,1:3])
-#細胞�?�を特定する新たなmeta.dataである"customclassif"を追�?する
+#細胞???を特定する新たなmeta.dataである"customclassif"を追???する
 merge.data@meta.data$customclassif = ""
 for (j in unique(sctype_scores$cluster)) {
   cl_type <- sctype_scores[sctype_scores$cluster == j,]
@@ -314,7 +331,7 @@ plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
 plot1 + plot2
 
 DoHeatmap(merge.data, dims = 1:3, cells = 500, balanced = T)
-###統�?###----------------------------------------------------------------------
+###統???###----------------------------------------------------------------------
 merge.anchors <- FindIntegrationAnchors(object.list = list(raw_WT, raw_AD), dims = 1:20)
 merge.data <- IntegrateData(anchorset = merge.anchors, dims = 1:20)
 DefaultAssay(merge.data) <- "integrated"
@@ -333,9 +350,9 @@ DimPlot(merge.data, reduction = "umap", split.by = "type", label = TRUE)
 
 ###ANNOTATION###----------------------------------------------------------------
 merge.data <- readRDS("~/Desktop/Save/WT:AD_Save/mergeData_donePCA.rds")
-#陽性遺伝子と陰性遺伝子�?�スコアリング
+#陽性遺伝子と陰性遺伝子???スコアリング
 es.max = sctype_score(scRNAseqData = merge.data[["integrated"]]@scale.data, scaled = TRUE, gs = gs_list$gs_positive, gs2 = gs_list$gs_negative)
-#meta.dataのseurat_clustersんも�?報とes.maxの�?報を統�?
+#meta.dataのseurat_clustersんも???報とes.maxの???報を統???
 cL_resutls = do.call("rbind", lapply(unique(merge.data@meta.data$seurat_clusters), function(cl){
   es.max.cl = 
 sort(rowSums(es.max[ ,rownames(merge.data@meta.data[merge.data@meta.data$seurat_clusters==cl, ])]), decreasing = !0)
@@ -346,7 +363,7 @@ sort(rowSums(es.max[ ,rownames(merge.data@meta.data[merge.data@meta.data$seurat_
   sctype_scores$type[as.numeric(as.character(sctype_scores$scores)) < 
 sctype_scores$ncells/4] = "unknown"
   print(sctype_scores[,1:3])
-#細胞�?�を特定する新たなmeta.dataである"customclassif"を追�?する
+#細胞???を特定する新たなmeta.dataである"customclassif"を追???する
 merge.data@meta.data$customclassif = ""
 for (j in unique(sctype_scores$cluster)) {
   cl_type <- sctype_scores[sctype_scores$cluster == j,]
@@ -355,7 +372,7 @@ for (j in unique(sctype_scores$cluster)) {
 
 DimPlot(merge.data, reduction = "umap", split.by = "type", label = TRUE, repel = TRUE, group.by = 'customclassif') 
 
-###アノテーションした細胞�?�を抜き�?�して、DEGを見つける###-----------------------
+###アノテーションした細胞???を抜き???して、DEGを見つける###-----------------------
 Idents(merge.data) <- "customclassif"
 #merge.data2 <- subset(merge.data, idents = 0)
 #Dimplotで確認できる
@@ -370,14 +387,14 @@ write.csv(MC_marker, "RNAMC_DEG.csv")
 VlnPlot(MC_data, "Galectin3", assay = "RNA")
 
 DoHeatmap(object = MC_data, group.by = "type", slot = "scale.data")
-###merge.dataをWTとADで�?割してlist化す�?###------------------------------------
+###merge.dataをWTとADで???割してlist化す???###------------------------------------
 type_data <- SplitObject(merge.data, split.by = "type")
-#tmpとはtemporaryのこと、意味のな�?一時的なファイル
-#table()を使�?と�?イン�?ント�?�回数�?"Freq"として保存�?
-#Var1,Var2列も自動的で生�?�される。それぞ�?"ident"と"type"が�?�納されて�?�?
+#tmpとはtemporaryのこと、意味のな???一時的なファイル
+#table()を使???と???イン???ント???回数???"Freq"として保存???
+#Var1,Var2列も自動的で生???される。それぞ???"ident"と"type"が???納されて??????
 tmp1 <- as.data.frame(table(Idents(type_data$WT), type_data$WT$type))
 tmp2 <- as.data.frame(table(Idents(type_data$AD), type_data$AD$type))
-#tmpをbind_rows()で結合させ�?
+#tmpをbind_rows()で結合させ???
 pt <- bind_rows(tmp1, tmp2)
 pt$Var1 <- as.character(pt$Var1)
 
@@ -391,7 +408,7 @@ ggplot(pt, aes(x = Var2, y = Freq, fill = Var1)) +
 MC_data <- subset(merge.data, idents = "Microglial cells")
 MC_data <- SetIdent(MC_data, value = "type")
 
-###�?クラスターのDEGのエンリ�?チ解析と比�?###-----------------------------------
+###???クラスターのDEGのエンリ???チ解析と比???###-----------------------------------
 library(dplyr)
 library(clusterProfiler)
 library(org.Hs.eg.db)
@@ -399,7 +416,7 @@ library(org.Hs.eg.db)
 deg <- FindAllMarkers(object = merge.data, only.pos = T)
 table(deg$cluster)
 Seurat::DoHeatmap(raw_AD, features = gene_list,)
-#クラスターごとのDEGを�?�クトルにしてリストにまとめる
+#クラスターごとのDEGを???クトルにしてリストにまとめる
 gene_list <- split(deg$gene, deg$cluster)
 #遺伝子名から遺伝子IDに変換
 for(i in names(gene_list)){
@@ -408,7 +425,7 @@ for(i in names(gene_list)){
                            toType = "ENTREZID",
                            OrgDb = "org.Hs.eg.db")
                            }
-#残った遺伝子を調べ�?
+#残った遺伝子を調べ???
 length(unlist(gene_list))/2
 
 #clusterProfiler用に成形
