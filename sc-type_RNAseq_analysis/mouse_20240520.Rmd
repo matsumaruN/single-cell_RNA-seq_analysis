@@ -1,0 +1,477 @@
+---
+title: "mouse"
+author: "Naoki Matsumaru"
+date: "2024-04-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r reading libraries}
+library(tidyverse)
+library(Seurat)
+library(openxlsx)
+library(hdf5r)
+library(ggplot2)
+library(HGNChelper)
+#library(SeuratData)
+set.seed(1234)
+```
+Data acquisition
+
+source:
+
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE224398
+
+available on h5 format.
+
+```{r reading h5 files}
+raw_WT.data <- Read10X_h5("GSM7021714_C_6m_filtered_feature_bc_matrix.h5")
+raw_AD.data <- Read10X_h5("GSM7021717_A_6m_filtered_feature_bc_matrix.h5")
+```
+
+To see what is in the h5 file.
+
+```{r}
+raw_WT.data %>% class
+raw_WT.data %>% dim
+raw_WT.data %>% as.data.frame()
+```
+
+
+dgcMatrix is a class of sparse numeric matrices in the compressed, sparse, column-oriented format.
+
+
+https://github.com/IanevskiAleksandr/sc-type/blob/master/README.md
+
+First, need to annotate cell type
+
+```{r}
+raw_WT <- CreateSeuratObject(counts = raw_WT.data, project = "ScRNA-seq of AD mouse")
+raw_WT$type <- "WT"
+```
+
+
+```{r}
+# normalize data
+raw_WT[["percent.mt"]] <- PercentageFeatureSet(raw_WT, pattern = "^MT-")
+raw_WT <- NormalizeData(raw_WT)
+```
+
+
+```{r}
+raw_WT <- FindVariableFeatures(raw_WT, selection.method = "vst", nfeatures = 3000)
+```
+
+
+```{r}
+raw_WT <- ScaleData(raw_WT, features = rownames(raw_WT))
+raw_WT <- RunPCA(raw_WT, features = VariableFeatures(object=raw_WT))
+```
+
+
+```{r}
+# Check number of PC components (we selected 10 PCs for downstream analysis, based on Elbow plot)
+ElbowPlot(raw_WT)
+```
+
+```{r}
+
+```
+
+
+```{r}
+
+raw_AD <- CreateSeuratObject(counts = raw_AD.data, project = "ScRNA-seq of AD mouse")
+raw_AD$type<- "AD"
+```
+```{r}
+
+raw_AD <- NormalizeData(raw_AD)
+```
+```{r}
+
+raw_AD <- FindVariableFeatures(raw_AD, selection.method = "vst", nfeatures = 3000)
+```
+
+# Data scaling
+
+```{r}
+
+raw_AD <- ScaleData(raw_AD, features = rownames(raw_AD))
+raw_AD <- RunPCA(raw_AD, features = VariableFeatures(object=raw_AD))
+
+
+DimHeatmap(raw_WT, dims = 1:3, cells = 500, balanced = T)
+```
+
+```{r}
+count_list <- list("WT_6m"=raw_WT.data, "AD_6m"=raw_AD.data)
+```
+
+
+
+## Create Seurat Object
+```{r}
+mouse_obj <- CreateSeuratObject(count=count_list)
+```
+
+To see what is Seurat object
+
+```{r}
+mouse_obj@meta.data %>% as.data.frame()
+mouse_obj%>% names
+Layers(mouse_obj[["RNA"]])
+```
+
+
+```{r}
+# load gene set preparation function
+source("https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/gene_sets_prepare.R")
+# load cell type annotation function
+source("https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/R/sctype_score_.R")
+
+```
+
+
+
+```{r}
+# DB file
+db_ <- "https://raw.githubusercontent.com/IanevskiAleksandr/sc-type/master/ScTypeDB_full.xlsx";
+tissue = "Brain"
+#tissue <- "Immune system" # e.g. Immune system,Pancreas,Liver,Eye,Kidney,Brain,Lung,Adrenal,Heart,Intestine,Muscle,Placenta,Spleen,Stomach,Thymus 
+
+# prepare gene sets
+gs_list <- gene_sets_prepare(db_, tissue)
+
+```
+
+```{r}
+# check Seurat object version (scRNA-seq matrix extracted differently in Seurat v4/v5)
+seurat_package_v5 <- isFALSE('counts' %in% names(attributes(raw_WT[["RNA"]])));
+print(sprintf("Seurat object %s is used", ifelse(seurat_package_v5, "v5", "v4")))
+```
+https://satijalab.org/seurat/archive/v3.0/merge_vignette.html
+https://satijalab.org/seurat/archive/v4.3/merge
+https://satijalab.org/seurat/articles/essential_commands.html
+
+
+
+###QUALITY CHECK###-------------------------------------------------------------
+
+```{r}
+raw_WT.data %>% as.data.frame() %>% filter(str_detect(row.names(.), "^MT-"))
+raw_AD.data %>% as.data.frame() %>% filter(str_detect(row.names(.), "^MT-"))
+```
+
+No MT related genes
+
+```{r}
+raw_WT[["percent.mt"]] <- PercentageFeatureSet(raw_WT, pattern = "^MT-")
+raw_AD[["percent.mt"]] <- PercentageFeatureSet(raw_AD, pattern = "^MT-")
+```
+
+
+```{r}
+VlnPlot(raw_WT, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+No mitochondrial gene.
+
+```{r}
+FeatureScatter(raw_WT, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+
+
+```{r}
+VlnPlot(raw_AD, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+
+```{r}
+#FeatureScatter(seurat_AD, feature1 = "nCount_RNA", feature2 = "percent.mt")
+FeatureScatter(raw_AD, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+
+```{r}
+raw_WT <- subset(raw_WT, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 30)
+raw_AD <- subset(raw_AD, subset = nFeature_RNA > 200 & nFeature_RNA < 3000 & percent.mt < 25)
+```
+
+
+```{r}
+###NORMALIZATION###-------------------------------------------------------------
+raw_WT <- NormalizeData(raw_WT, normalization.method = "LogNormalize", scale.factor = 10000)
+raw_AD <- NormalizeData(raw_AD, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+
+```{r}
+raw_WT <- FindVariableFeatures(raw_WT, selection.method = "vst", nfeatures = 3000)
+raw_AD <- FindVariableFeatures(raw_AD, selection.method = "vst", nfeatures = 3000)
+```
+
+
+```{r, fig.width=13, fig.height=5}
+top10 <- head(VariableFeatures(raw_WT), 10)
+plot1 <- VariableFeaturePlot(raw_WT)
+plot21 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+#plot21
+top10 <- head(VariableFeatures(raw_AD), 10)
+plot1 <- VariableFeaturePlot(raw_AD)
+plot22 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot21 + plot22
+```
+
+# Data scaling
+
+```{r}
+raw_WT <- ScaleData(raw_WT)
+raw_WT <- RunPCA(raw_WT, features = head(VariableFeatures(object=raw_WT), 10000))
+DimHeatmap(raw_WT, dims = 1:3, cells = 500, balanced = T)
+```
+
+```{r}
+raw_AD <- ScaleData(raw_AD)
+raw_AD <- RunPCA(raw_AD, features = head(VariableFeatures(object=raw_AD), 10000))
+DimHeatmap(raw_AD, dims = 1:3, cells = 500, balanced = T)
+```
+```{r}
+ElbowPlot(raw_WT)
+ElbowPlot(raw_AD)
+```
+```{r}
+raw_WT <- FindNeighbors(raw_WT, dims = 1:5)
+raw_AD <- FindNeighbors(raw_AD, dims = 1:5)
+```
+```{r}
+raw_WT <- FindClusters(raw_WT, resolution=0.8)
+raw_AD <- FindClusters(raw_AD, resolution=0.8)
+```
+```{r}
+raw_WT <- RunUMAP(raw_WT, dims=1:5)
+raw_AD <- RunUMAP(raw_AD, dims=1:5)
+```
+
+```{r}
+DimPlot(raw_WT,reduction="umap")
+DimPlot(raw_AD,reduction="umap")
+
+```
+
+
+
+```{r}
+# extract scaled scRNA-seq matrix
+scRNAseqData_scaled <- if (seurat_package_v5) as.matrix(raw_WT[["RNA"]]$scale.data) else as.matrix(raw_WT[["RNA"]]@scale.data)
+```
+
+
+```{r}
+es.max = sctype_score(scRNAseqData = scRNAseqData_scaled, scaled = TRUE, gs = gs_list$gs_positive, gs2 = gs_list$gs_negative)
+```
+
+
+
+```{r}
+# merge by cluster
+cL_resutls <- do.call("rbind", lapply(unique(raw_WT@meta.data$seurat_clusters), function(cl){
+    es.max.cl = sort(rowSums(es.max[ ,rownames(raw_WT@meta.data[raw_WT@meta.data$seurat_clusters==cl, ])]), decreasing = !0)
+    head(data.frame(cluster = cl, type = names(es.max.cl), scores = es.max.cl, ncells = sum(raw_WT@meta.data$seurat_clusters==cl)), 10)
+}))
+sctype_scores <- cL_resutls %>% group_by(cluster) %>% top_n(n = 1, wt = scores)  
+
+# set low-confident (low ScType score) clusters to "unknown"
+sctype_scores$type[as.numeric(as.character(sctype_scores$scores)) < sctype_scores$ncells/4] <- "Unknown"
+print(sctype_scores[,1:3])
+```
+
+```{r}
+raw_WT@meta.data$sctype_classification = ""
+for(j in unique(sctype_scores$cluster)){
+  cl_type = sctype_scores[sctype_scores$cluster==j,]; 
+  raw_WT@meta.data$sctype_classification[raw_WT@meta.data$seurat_clusters == j] = as.character(cl_type$type[1])
+}
+
+dim_plot_wt <- DimPlot(raw_WT, reduction = "umap", label = TRUE, repel = TRUE, group.by = 'sctype_classification')        
+```
+
+```{r}
+dim_plot_wt
+```
+
+
+```{r}
+# check Seurat object version (scRNA-seq matrix extracted differently in Seurat v4/v5)
+seurat_package_v5 <- isFALSE('counts' %in% names(attributes(raw_AD[["RNA"]])));
+print(sprintf("Seurat object %s is used", ifelse(seurat_package_v5, "v5", "v4")))
+
+```
+
+
+```{r}
+# extract scaled scRNA-seq matrix
+scRNAseqData_scaled <- if (seurat_package_v5) as.matrix(raw_AD[["RNA"]]$scale.data) else as.matrix(raw_AD[["RNA"]]@scale.data)
+```
+
+
+```{r}
+es.max = sctype_score(scRNAseqData = scRNAseqData_scaled, scaled = TRUE, gs = gs_list$gs_positive, gs2 = gs_list$gs_negative)
+```
+
+
+
+```{r}
+# merge by cluster
+cL_resutls <- do.call("rbind", lapply(unique(raw_AD@meta.data$seurat_clusters), function(cl){
+    es.max.cl = sort(rowSums(es.max[ ,rownames(raw_AD@meta.data[raw_AD@meta.data$seurat_clusters==cl, ])]), decreasing = !0)
+    head(data.frame(cluster = cl, type = names(es.max.cl), scores = es.max.cl, ncells = sum(raw_AD@meta.data$seurat_clusters==cl)), 10)
+}))
+sctype_scores <- cL_resutls %>% group_by(cluster) %>% top_n(n = 1, wt = scores)  
+
+# set low-confident (low ScType score) clusters to "unknown"
+sctype_scores$type[as.numeric(as.character(sctype_scores$scores)) < sctype_scores$ncells/4] <- "Unknown"
+print(sctype_scores[,1:3])
+```
+
+```{r}
+raw_AD@meta.data$sctype_classification = ""
+for(j in unique(sctype_scores$cluster)){
+  cl_type = sctype_scores[sctype_scores$cluster==j,]; 
+  raw_AD@meta.data$sctype_classification[raw_AD@meta.data$seurat_clusters == j] = as.character(cl_type$type[1])
+}
+
+dim_plot_ad <- DimPlot(raw_AD, reduction = "umap", label = TRUE, repel = TRUE, group.by = 'sctype_classification')        
+```
+
+```{r}
+dim_plot_ad
+```
+```{r}
+target_rownames<- raw_WT@meta.data %>% filter(sctype_classification == "Microglial cells") %>% row.names()
+
+Lgals3_WT <- raw_WT[["RNA"]]$data %>% as.data.frame() %>%  filter(str_detect(row.names(.), "Lgals3")) %>%
+              select(all_of(target_rownames))
+```
+
+
+```{r}
+target_rownames %>% length
+Lgals3_WT %>% t %>% dim
+```
+```{r}
+raw_WT@meta.data  %>% merge(t(Lgals3_WT), by="row.names", all=TRUE) %>% filter(sctype_classification == "Microglial cells")
+```
+
+
+
+```{r}
+target_rownames<- raw_AD@meta.data %>% filter(sctype_classification == "Microglial cells") %>% row.names()
+
+Lgals3_AD <- raw_AD[["RNA"]]$data %>% as.data.frame() %>%  filter(str_detect(row.names(.), "Lgals3")) %>%
+              select(all_of(target_rownames))
+
+```
+
+```{r}
+WT_Lgals3<- raw_WT@meta.data %>% merge(t(Lgals3_WT), by="row.names", all=TRUE) %>% filter(sctype_classification == "Microglial cells")
+AD_Lgals3<- raw_AD@meta.data %>% merge(t(Lgals3_AD), by="row.names", all=TRUE) %>% filter(sctype_classification == "Microglial cells")
+```
+
+
+```{r}
+plot_dat <- bind_rows(WT_Lgals3, AD_Lgals3)
+```
+
+```{r}
+plot_dat
+```
+
+```{r}
+plot_dat %>% filter(Lgals3>0) %>% ggplot(aes(x=type, y=Lgals3)) + geom_boxplot() + geom_jitter()
+```
+```{r}
+plot_dat %>% filter(Lgals3bp>0) %>% ggplot(aes(x=type, y=Lgals3bp)) + geom_boxplot() + geom_jitter()
+```
+
+
+
+
+```{r}
+library(cowplot)
+plot_grid(dim_plot_wt,dim_plot_ad, nrow=2)
+```
+
+
+
+```{r}
+raw_WT[["RNA"]]
+
+raw_WT$type
+```
+
+```{r}
+all.equal(colnames(raw_WT.data),colnames(raw_AD.data))
+```
+
+```{r}
+amga <- CreateSeuratObject(counts=raw_AD.data)
+Assays(amga)
+```
+```{r}
+wt_assay <- CreateAssay5Object(counts=raw_WT.data)
+amga[["WT"]] <- wt_assay
+Assays(amga)
+```
+```{r}
+
+```
+
+
+```{r}
+df_db<- read.xlsx(db_)
+```
+
+```{r}
+df_db %>% filter(tissueType=='Brain') %>% select(geneSymbolmore1)
+#  filter(geneSymbolmore1 %in% "Lgals3")
+
+df_db %>% filter(tissueType=='Brain') %>%   filter(str_detect(geneSymbolmore1,"Lgals3"))
+df_db %>% filter(tissueType=='Brain') %>%   filter(str_detect(geneSymbolmore2,"Lgals3"))
+
+```
+
+## Looking for Lgals3 in the cluster
+
+```{r}
+boud_data <- bind_rows(raw_WT.data %>% as.data.frame() %>% filter(str_detect(row.names(.), "Lgals3")), raw_AD.data %>% as.data.frame() %>% filter(str_detect(row.names(.), "Lgals3")))
+```
+```{r}
+boud_data
+```
+```{r}
+raw_WT.data %>% dim()
+raw_AD.data %>% dim
+
+```
+
+```{r}
+raw_WT.data %>% as.data.frame() %>% filter(str_detect(row.names(.), "Lgals3")) %>% colnames()
+raw_AD.data %>% as.data.frame() %>% filter(str_detect(row.names(.), "Lgals3")) %>% colnames()
+
+```
+
+
+
+```{r}
+raw_WT[["RNA"]]$data %>% as.data.frame() %>% filter(str_detect(row.names(.), "Lgals3"))
+```
+
+```{r}
+raw_WT[["RNA"]]$data %>% as.data.frame() %>% filter(str_detect(row.names(.), "Lgals3")) %>% select()
+```
+
